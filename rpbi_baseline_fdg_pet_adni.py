@@ -11,16 +11,16 @@ Plot t-maps and p-maps on the voxels.
 import os, glob
 import numpy as np
 import pandas as pd
-import nibabel as nib
 from nilearn.input_data import NiftiMasker
 from nilearn.plotting import plot_roi, plot_stat_map, plot_img
 from nilearn.mass_univariate import randomized_parcellation_based_inference
 from matplotlib import cm
-
+from nilearn._utils import concat_niimgs
 
 BASE_DIR = '/disk4t/mehdi/data/ADNI_baseline_fdg_pet'
 MNI_TEMPLATE = os.path.join(BASE_DIR, 'wMNI152_T1_2mm_brain.nii')
-
+CACHE_DIR = os.path.join('/', 'disk4t', 'mehdi',
+                         'data', 'tmp')
 data = pd.read_csv(os.path.join(BASE_DIR, 'description_file.csv'))
 
 pet_files = []
@@ -30,8 +30,8 @@ for idx, row in data.iterrows():
                                       'I' + str(row.Image_ID), 'wI*.nii'))
     if len(pet_file)>0:
         pet_files.append(pet_file[0])
-        img = nib.load(pet_file[0])
-        pet_img.append(img)
+
+pet_img = concat_niimgs(pet_files)
 
 masker = NiftiMasker(mask_strategy='epi',
                      mask_args=dict(opening=1))
@@ -45,10 +45,6 @@ nb_vox = pet_masked.shape[1]
 
 groups = [['AD', 'Normal'], ['AD', 'EMCI'], ['AD', 'LMCI'],
           ['EMCI', 'LMCI'], ['EMCI', 'Normal'], ['LMCI', 'Normal']]
-
-
-groups = [['EMCI', 'LMCI']]
-
 
 for gr in groups:
     gr1_idx = data[data.DX_Group == gr[0]].index.values
@@ -68,16 +64,18 @@ for gr in groups:
     test_var, gr_f,  # + intercept as a covariate by default
     np.asarray(masker.mask_img_.get_data()).astype(bool),
     n_parcellations=200,  # 30 for the sake of time, 100 is recommended
-    n_parcels=500,
-    threshold=0,
+    n_parcels=2000,
+    threshold='auto',
     n_perm=10000,  # 1,000 for the sake of time. 10,000 is recommended
-    n_jobs=4, verbose=False)
+    n_jobs=10,
+    memory=CACHE_DIR,
+    verbose=True)
     
     neg_log_pvals_rpbi_unmasked = masker.inverse_transform(
     np.ravel(neg_log_pvals_rpbi))
 
-    p_path = os.path.join('figures',
-                          'pmap_rpbi_voxel_norm_'+gr[0]+'_'+gr[1]+'_baseline_adni')
-    plot_stat_map(neg_log_pvals_rpbi_unmasked, img, output_file=p_path,
+    p_path = os.path.join(CACHE_DIR,
+                          '2_pmap_rpbi_voxel_norm_'+gr[0]+'_'+gr[1]+'_baseline_adni')
+    plot_stat_map(neg_log_pvals_rpbi_unmasked, output_file=p_path,
                   black_bg=True, title='/'.join(gr))    
     neg_log_pvals_rpbi_unmasked.to_filename(p_path+'.nii')
